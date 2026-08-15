@@ -23,7 +23,7 @@ jobs:
 
       - name: Create Flutter Android project
         run: |
-          flutter create --platforms=android --org com.shaik.favour .
+          flutter create --project-name favour --platforms=android --org com.shaik.favour .
 
       - name: Configure app
         run: |
