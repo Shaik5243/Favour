@@ -1,7 +1,7 @@
 name: favour
-description: Personal shopping assistant - price comparison and price history.
+description: Personal shopping assistant and price comparison app.
 publish_to: "none"
-version: 3.0.0+3
+version: 4.0.0+4
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
