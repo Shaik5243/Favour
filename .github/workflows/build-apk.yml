@@ -77,8 +77,13 @@ jobs:
               '    implementation("com.google.mlkit:text-recognition-korean:16.0.1")',
           ]
           deps = "\n".join(deps)
+          marker = 'dependencies {'
           if 'text-recognition-chinese:16.0.1' not in s:
-              s = s.replace('dependencies {', 'dependencies {\n' + deps, 1)
+              if marker not in s:
+                  raise SystemExit('No dependencies block found in generated Android Gradle file')
+              s = s.replace(marker, marker + '\n' + deps, 1)
+          if '\\n    implementation(' in s:
+              raise SystemExit('Invalid literal \\n detected in generated Gradle file')
           p.write_text(s)
           PY
       - name: Enable local notification permission
