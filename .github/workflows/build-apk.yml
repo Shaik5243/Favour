@@ -26,6 +26,18 @@ jobs:
           if [ ! -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
             flutter create --project-name favour --platforms=android --org com.shaik.favour .
           fi
+      - name: Enable core library desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          if 'isCoreLibraryDesugaringEnabled = true' not in s:
+              s = s.replace('android {', 'android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }', 1)
+          if 'coreLibraryDesugaring(' not in s:
+              s = s.replace('dependencies {', 'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")', 1)
+          p.write_text(s)
+          PY
       - name: Enable local notification permission
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
