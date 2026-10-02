@@ -13,11 +13,15 @@ class ProductParser {
       r'(\d+(?:\.\d+)?)\s*(kg|g|kgs?|ml|l|litre|litres|pcs?|pieces?)\b',
       caseSensitive: false,
     ).firstMatch(cleaned);
-    final multi =
-        RegExp(r'(\d+)\s*[x×]', caseSensitive: false).firstMatch(cleaned);
+    final multi = RegExp(
+      r'[x×]\s*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(cleaned);
 
     if (match == null) {
-      return ParsedProduct(Product(name: cleaned, packSize: 1, unit: Unit.piece));
+      return ParsedProduct(
+        Product(name: cleaned, packSize: 1, unit: Unit.piece),
+      );
     }
 
     final size = double.parse(match.group(1)!);
@@ -35,11 +39,7 @@ class ProductParser {
     var name = cleaned.replaceFirst(match.group(0)!, '').trim();
 
     if (multi != null) {
-      final packMarker = RegExp(
-        '\\b${multi.group(1)!}\\s*[x×]\\s*\\$',
-        caseSensitive: false,
-      );
-      name = name.replaceFirst(packMarker, '').trim();
+      name = name.replaceFirst(multi.group(0)!, '').trim();
     }
 
     final words = name.split(' ');
