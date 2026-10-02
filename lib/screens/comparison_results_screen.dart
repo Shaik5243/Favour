@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
 import '../models/offer.dart';
@@ -19,11 +18,7 @@ class _ComparisonResultsScreenState extends State<ComparisonResultsScreen> {
     if (widget.controller.data.apiKey.trim().isEmpty) return;
     setState(() => loadingLive = true);
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
-      final position = await Geolocator.getCurrentPosition();
-      final offers = await QuickCommerceApi().search(product, pincode: widget.controller.data.pincode, apiKey: widget.controller.data.apiKey, latitude: position.latitude, longitude: position.longitude);
+      final offers = await QuickCommerceApi().search(product, pincode: widget.controller.data.pincode, apiKey: widget.controller.data.apiKey);
       if (!mounted) return;
       liveOffers = offers;
       if (offers.isNotEmpty) {
