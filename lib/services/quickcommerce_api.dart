@@ -18,8 +18,11 @@ class QuickCommerceApi {
     Retailer.jioMart: 'JioMart',
   };
 
-  Future<List<Offer>> search(Product product, {required String pincode, required String apiKey, double? latitude, double? longitude}) async {
-    if (apiKey.trim().isEmpty || latitude == null || longitude == null) return const [];
+  Future<List<Offer>> search(Product product, {required String pincode, required String apiKey}) async {
+    if (apiKey.trim().isEmpty || pincode.trim().length != 6) return const [];
+    final coordinates = await _coordinatesForPincode(pincode.trim());
+    if (coordinates == null) return const [];
+    final latitude = coordinates.$1; final longitude = coordinates.$2;
     final results = <Offer>[];
     for (final entry in _platforms.entries) {
       try {
@@ -43,6 +46,20 @@ class QuickCommerceApi {
       } catch (_) {}
     }
     return results;
+  }
+
+  Future<(double, double)?> _coordinatesForPincode(String pincode) async {
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {'postalcode': pincode, 'country': 'India', 'format': 'json', 'limit': '1'});
+      final response = await _client.get(uri, headers: {'Accept': 'application/json', 'User-Agent': 'Favour personal shopping app'});
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      if (data is! List || data.isEmpty) return null;
+      final item = data.first as Map;
+      final lat = double.tryParse(item['lat']?.toString() ?? '');
+      final lon = double.tryParse(item['lon']?.toString() ?? '');
+      return lat == null || lon == null ? null : (lat, lon);
+    } catch (_) { return null; }
   }
 
   Offer? _parseOffer(Map item, Product requested, Retailer retailer) {
