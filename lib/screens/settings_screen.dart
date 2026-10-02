@@ -12,13 +12,15 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _pinController;
+  late final TextEditingController _credentialController;
   @override
   void initState() {
     super.initState();
     _pinController = TextEditingController(text: widget.controller.data.pincode);
+    _credentialController = TextEditingController(text: widget.controller.data.apiKey);
   }
   @override
-  void dispose() { _pinController.dispose(); super.dispose(); }
+  void dispose() { _pinController.dispose(); _credentialController.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +31,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Text('Location & alerts', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
         TextField(controller: _pinController, maxLength: 6, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'PIN code', prefixIcon: Icon(Icons.location_on_outlined))),
-        FilledButton(onPressed: () => widget.controller.save(widget.controller.data.copyWith(pincode: _pinController.text.trim())), child: const Text('Save PIN code')),
+        FilledButton(onPressed: () => widget.controller.save(widget.controller.data.copyWith(pincode: _pinController.text.trim(), apiKey: _credentialController.text.trim())), child: const Text('Save location settings')),
+        const SizedBox(height: 12),
+        TextField(controller: _credentialController, obscureText: true, decoration: const InputDecoration(labelText: 'Live connector credential', prefixIcon: Icon(Icons.lock_outline))),
         const SizedBox(height: 20),
         Text('Price alerts', style: Theme.of(context).textTheme.titleLarge),
         const Text('Alerts run when you save a newly recorded or authorised price that reaches a target.'),
