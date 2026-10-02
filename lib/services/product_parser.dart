@@ -13,7 +13,8 @@ class ProductParser {
       r'(\d+(?:\.\d+)?)\s*(kg|g|kgs?|ml|l|litre|litres|pcs?|pieces?)\b',
       caseSensitive: false,
     ).firstMatch(cleaned);
-    final multi = RegExp(r'(\d+)\s*[x×]', caseSensitive: false).firstMatch(cleaned);
+    final multi =
+        RegExp(r'(\d+)\s*[x×]', caseSensitive: false).firstMatch(cleaned);
 
     if (match == null) {
       return ParsedProduct(Product(name: cleaned, packSize: 1, unit: Unit.piece));
@@ -35,7 +36,7 @@ class ProductParser {
 
     if (multi != null) {
       final packMarker = RegExp(
-        '\\b${multi.group(1)!}\\s*[x×]\\s*$',
+        '\\b${multi.group(1)!}\\s*[x×]\\s*\\$',
         caseSensitive: false,
       );
       name = name.replaceFirst(packMarker, '').trim();
