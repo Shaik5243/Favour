@@ -64,6 +64,20 @@ jobs:
           s = s.replace('isMinifyEnabled = true', 'isMinifyEnabled = false')
           p.write_text(s)
           PY
+      - name: Add ML Kit language dependencies
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          deps = '''    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")'''
+          if 'text-recognition-chinese:16.0.1' not in s:
+              s = s.replace('dependencies {', 'dependencies {\\n' + deps, 1)
+          p.write_text(s)
+          PY
       - name: Enable local notification permission
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
