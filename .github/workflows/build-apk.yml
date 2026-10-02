@@ -78,7 +78,7 @@ jobs:
           ]
           deps = "\n".join(deps)
           if 'text-recognition-chinese:16.0.1' not in s:
-              s = s.replace('dependencies {', 'dependencies {\\n' + deps, 1)
+              s = s.replace('dependencies {', 'dependencies {\n' + deps, 1)
           p.write_text(s)
           PY
       - name: Enable local notification permission
