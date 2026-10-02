@@ -1,4 +1,45 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'comparison_results_screen.dart';
-class SavedScreen extends StatelessWidget { const SavedScreen({super.key,required this.controller}); final FavourController controller; @override Widget build(BuildContext context){final favourites=controller.data.favourites;return ListView(padding:const EdgeInsets.all(20),children:[Text('Saved products',style:Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight:FontWeight.bold)),if(favourites.isEmpty)const Padding(padding:EdgeInsets.only(top:36),child:Center(child:Text('Save a product from its comparison screen.'))),...favourites.map((product)=>Card(child:ListTile(title:Text(product.displayName),subtitle:Text(product.packLabel),onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>ComparisonResultsScreen(controller:controller,product:product))),trailing:IconButton(icon:const Icon(Icons.delete_outline),tooltip:'Remove saved product',onPressed:()=>controller.save(controller.data.copyWith(favourites:favourites.where((item)=>item.id!=product.id).toList())))))))]);}}
+
+class SavedScreen extends StatelessWidget {
+  const SavedScreen({super.key, required this.controller});
+  final FavourController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final favourites = controller.data.favourites;
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text('Saved products', style: Theme.of(context).textTheme.headlineSmall),
+        if (favourites.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 36),
+            child: Center(child: Text('Save a product from its comparison screen.')),
+          ),
+        ...favourites.map((product) {
+          return Card(
+            child: ListTile(
+              title: Text(product.displayName),
+              subtitle: Text(product.packLabel),
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ComparisonResultsScreen(controller: controller, product: product),
+                ));
+              },
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Remove saved product',
+                onPressed: () {
+                  final remaining = favourites.where((item) => item.id != product.id).toList();
+                  controller.save(controller.data.copyWith(favourites: remaining));
+                },
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
