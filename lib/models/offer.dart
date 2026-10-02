@@ -1,14 +1,26 @@
+import 'price_source.dart';
 import 'product.dart';
 import 'retailer.dart';
 
 class Offer {
-  const Offer({required this.product, required this.retailer, required this.price, required this.timestamp, required this.available, this.quantity = 1, this.deliveryFee, this.handlingFee, this.otherFee});
-  final Product product; final Retailer retailer; final double price; final DateTime timestamp; final bool available; final int quantity; final double? deliveryFee; final double? handlingFee; final double? otherFee;
-  double get unitPrice => price / (product.packSize * quantity * product.unit.baseFactor);
+  const Offer({required this.id, required this.product, required this.retailer, required this.price, required this.checkedAt, required this.available, required this.source, this.deliveryFee, this.handlingFee, this.otherFee, this.sourceNote});
+  final String id;
+  final Product product;
+  final Retailer retailer;
+  final double price;
+  final DateTime checkedAt;
+  final bool available;
+  final PriceSource source;
+  final double? deliveryFee;
+  final double? handlingFee;
+  final double? otherFee;
+  final String? sourceNote;
+  double get unitPrice => price / product.normalizedQuantity;
   double get knownFees => (deliveryFee ?? 0) + (handlingFee ?? 0) + (otherFee ?? 0);
-  Map<String, dynamic> toJson() => {'product': product.toJson(), 'retailer': retailer.name, 'price': price, 'timestamp': timestamp.toIso8601String(), 'available': available, 'quantity': quantity, 'deliveryFee': deliveryFee, 'handlingFee': handlingFee, 'otherFee': otherFee};
-  factory Offer.fromJson(Map<String, dynamic> value) => Offer(product: Product.fromJson(Map<String, dynamic>.from(value['product'] as Map)), retailer: Retailer.values.byName(value['retailer'] as String), price: (value['price'] as num).toDouble(), timestamp: DateTime.parse(value['timestamp'] as String), available: value['available'] as bool? ?? true, quantity: value['quantity'] as int? ?? 1, deliveryFee: (value['deliveryFee'] as num?)?.toDouble(), handlingFee: (value['handlingFee'] as num?)?.toDouble(), otherFee: (value['otherFee'] as num?)?.toDouble());
+  double get knownTotal => price + knownFees;
+  Map<String, dynamic> toJson() => {'id': id, 'product': product.toJson(), 'retailer': retailer.name, 'price': price, 'checkedAt': checkedAt.toIso8601String(), 'available': available, 'source': source.name, 'deliveryFee': deliveryFee, 'handlingFee': handlingFee, 'otherFee': otherFee, 'sourceNote': sourceNote};
+  factory Offer.fromJson(Map<String, dynamic> json) => Offer(id: json['id'] as String, product: Product.fromJson(Map<String, dynamic>.from(json['product'] as Map)), retailer: Retailer.values.byName(json['retailer'] as String), price: (json['price'] as num).toDouble(), checkedAt: DateTime.parse(json['checkedAt'] as String), available: json['available'] as bool? ?? true, source: PriceSource.values.byName(json['source'] as String? ?? 'recorded'), deliveryFee: (json['deliveryFee'] as num?)?.toDouble(), handlingFee: (json['handlingFee'] as num?)?.toDouble(), otherFee: (json['otherFee'] as num?)?.toDouble(), sourceNote: json['sourceNote'] as String?);
 }
-class BasketItem { const BasketItem({required this.product, this.quantity = 1}); final Product product; final int quantity; Map<String, dynamic> toJson() => {'product': product.toJson(), 'quantity': quantity}; factory BasketItem.fromJson(Map<String, dynamic> value) => BasketItem(product: Product.fromJson(Map<String, dynamic>.from(value['product'] as Map)), quantity: value['quantity'] as int? ?? 1); }
-class RetailerBasketTotal { const RetailerBasketTotal(this.retailer, this.total); final Retailer retailer; final double total; }
-class SmartBasket { const SmartBasket({required this.splitTotal, required this.oneRetailer, required this.hasCompletePrices}); final double splitTotal; final RetailerBasketTotal? oneRetailer; final bool hasCompletePrices; bool get isSplitCheaper => oneRetailer != null && splitTotal < oneRetailer!.total; static SmartBasket calculate(List<BasketItem> basket, List<Offer> offers) { if (basket.isEmpty) return const SmartBasket(splitTotal: 0, oneRetailer: null, hasCompletePrices: false); Offer? latest(Product product, Retailer retailer) { final matches = offers.where((offer) => offer.product.id == product.id && offer.retailer == retailer && offer.available).toList()..sort((a, b) => b.timestamp.compareTo(a.timestamp)); return matches.isEmpty ? null : matches.first; } var split = 0.0; for (final item in basket) { final choices = Retailer.values.map((retailer) => latest(item.product, retailer)).whereType<Offer>().toList(); if (choices.isEmpty) return const SmartBasket(splitTotal: 0, oneRetailer: null, hasCompletePrices: false); choices.sort((a, b) => a.price.compareTo(b.price)); split += choices.first.price * item.quantity; } final totals = <RetailerBasketTotal>[]; for (final retailer in Retailer.values) { var total = 0.0; var complete = true; for (final item in basket) { final offer = latest(item.product, retailer); if (offer == null) { complete = false; break; } total += offer.price * item.quantity; } if (complete) totals.add(RetailerBasketTotal(retailer, total)); } totals.sort((a, b) => a.total.compareTo(b.total)); return SmartBasket(splitTotal: split, oneRetailer: totals.isEmpty ? null : totals.first, hasCompletePrices: true); } }
+
+class BasketItem { const BasketItem({required this.product, this.quantity = 1}); final Product product; final int quantity; Map<String, dynamic> toJson() => {'product': product.toJson(), 'quantity': quantity}; factory BasketItem.fromJson(Map<String, dynamic> json) => BasketItem(product: Product.fromJson(Map<String, dynamic>.from(json['product'] as Map)), quantity: json['quantity'] as int? ?? 1); }
+class PriceAlert { const PriceAlert({required this.product, required this.targetPrice, this.enabled = true}); final Product product; final double targetPrice; final bool enabled; Map<String, dynamic> toJson() => {'product': product.toJson(), 'targetPrice': targetPrice, 'enabled': enabled}; factory PriceAlert.fromJson(Map<String, dynamic> json) => PriceAlert(product: Product.fromJson(Map<String, dynamic>.from(json['product'] as Map)), targetPrice: (json['targetPrice'] as num).toDouble(), enabled: json['enabled'] as bool? ?? true); }
