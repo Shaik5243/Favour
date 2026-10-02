@@ -30,11 +30,17 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
       - name: Build release APK
         run: flutter build apk --release
 
       - name: Upload Favour APK
         uses: actions/upload-artifact@v4
         with:
-          name: Favour-v3-APK
+          name: Favour-v4-APK
           path: build/app/outputs/flutter-apk/app-release.apk

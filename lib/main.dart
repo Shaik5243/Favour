@@ -1,810 +1,146 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-const retailers = [
-  'Blinkit',
-  'Zepto',
-  'Instamart',
-  'BB Now',
-  'Flipkart Minutes',
-  'Amazon Now',
-  'JioMart',
-];
-
-class PriceRecord {
-  final String product;
-  final String retailer;
-  final double price;
-  final DateTime time;
-
-  PriceRecord(
-    this.product,
-    this.retailer,
-    this.price,
-    this.time,
-  );
-
-  Map<String, dynamic> toJson() {
-    return {
-      'product': product,
-      'retailer': retailer,
-      'price': price,
-      'time': time.toIso8601String(),
-    };
-  }
-
-  factory PriceRecord.fromJson(Map<String, dynamic> json) {
-    return PriceRecord(
-      '${json['product']}',
-      '${json['retailer']}',
-      (json['price'] as num).toDouble(),
-      DateTime.parse('${json['time']}'),
-    );
-  }
-}
+import 'models/offer.dart';
+import 'models/product.dart';
+import 'models/retailer.dart';
+import 'screens/comparison_results_screen.dart';
+import 'screens/search_screen.dart';
+import 'services/local_store.dart';
+import 'services/retailer_adapter.dart';
 
 void main() {
   runApp(const FavourApp());
 }
 
-class FavourApp extends StatelessWidget {
+class FavourApp extends StatefulWidget {
   const FavourApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Favour',
-      theme: ThemeData(
-        colorSchemeSeed: Colors.indigo,
-        useMaterial3: true,
-      ),
-      home: const FavourHome(),
-    );
-  }
+  State<FavourApp> createState() => _FavourAppState();
 }
 
-class FavourHome extends StatefulWidget {
-  const FavourHome({super.key});
-
-  @override
-  State<FavourHome> createState() => _FavourHomeState();
-}
-
-class _FavourHomeState extends State<FavourHome> {
-  final TextEditingController searchController =
-      TextEditingController();
-
-  final TextEditingController pincodeController =
-      TextEditingController();
-
-  List<PriceRecord> records = [];
-  List<String> favourites = [];
-
-  String query = '';
-  int selectedTab = 0;
+class _FavourAppState extends State<FavourApp> {
+  final LocalStore _store = LocalStore();
+  AppData _data = AppData.empty();
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    loadData();
+    _load();
   }
 
-  Future<void> loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final storedRecords =
-        prefs.getStringList('price_records') ?? [];
-
-    setState(() {
-      records = storedRecords
-          .map(
-            (item) => PriceRecord.fromJson(
-              jsonDecode(item),
-            ),
-          )
-          .toList();
-
-      favourites =
-          prefs.getStringList('favourites') ?? [];
-
-      pincodeController.text =
-          prefs.getString('pincode') ?? '';
-    });
-  }
-
-  Future<void> saveData() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      'price_records',
-      records
-          .map((item) => jsonEncode(item.toJson()))
-          .toList(),
-    );
-
-    await prefs.setStringList(
-      'favourites',
-      favourites,
-    );
-
-    await prefs.setString(
-      'pincode',
-      pincodeController.text.trim(),
-    );
-  }
-
-  List<PriceRecord> get productRecords {
-    final search =
-        query.trim().toLowerCase();
-
-    return records
-        .where(
-          (record) =>
-              record.product.toLowerCase() ==
-              search,
-        )
-        .toList()
-      ..sort(
-        (a, b) => b.time.compareTo(a.time),
-      );
-  }
-
-  Map<String, PriceRecord> get latestPrices {
-    final Map<String, PriceRecord> result = {};
-
-    for (final record in productRecords) {
-      if (!result.containsKey(record.retailer)) {
-        result[record.retailer] = record;
-      }
-    }
-
-    return result;
-  }
-
-  PriceRecord? get bestPrice {
-    final prices =
-        latestPrices.values.toList();
-
-    if (prices.isEmpty) {
-      return null;
-    }
-
-    prices.sort(
-      (a, b) => a.price.compareTo(b.price),
-    );
-
-    return prices.first;
-  }
-
-  void showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
-  }
-
-  void searchProduct() {
-    setState(() {
-      query =
-          searchController.text.trim();
-    });
-  }
-
-  Future<void> recordPrice(
-    String retailer,
-  ) async {
-    if (searchController.text.trim().isEmpty) {
-      showMessage(
-        'Search for a product first.',
-      );
-      return;
-    }
-
-    final priceController =
-        TextEditingController();
-
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(
-            'Record $retailer price',
-          ),
-          content: TextField(
-            controller: priceController,
-            autofocus: true,
-            keyboardType:
-                const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
-            decoration:
-                const InputDecoration(
-              prefixText: '₹ ',
-              hintText: 'Current price',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final value =
-                    double.tryParse(
-                  priceController.text.trim(),
-                );
-
-                if (value == null ||
-                    value <= 0) {
-                  showMessage(
-                    'Enter a valid price.',
-                  );
-                  return;
-                }
-
-                setState(() {
-                  records.add(
-                    PriceRecord(
-                      searchController.text.trim(),
-                      retailer,
-                      value,
-                      DateTime.now(),
-                    ),
-                  );
-
-                  query =
-                      searchController.text.trim();
-                });
-
-                await saveData();
-
-                if (mounted) {
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> openRetailer(
-    String retailer,
-  ) async {
-    final product =
-        searchController.text.trim();
-
-    if (product.isEmpty) {
-      showMessage(
-        'Search for a product first.',
-      );
-      return;
-    }
-
-    final encoded =
-        Uri.encodeQueryComponent(product);
-
-    final urls = {
-      'Blinkit':
-          'https://blinkit.com/s/?q=$encoded',
-      'Zepto':
-          'https://www.zeptonow.com/search?query=$encoded',
-      'Instamart':
-          'https://www.swiggy.com/instamart/search?query=$encoded',
-      'BB Now':
-          'https://www.bigbasket.com/ps/?q=$encoded',
-      'Flipkart Minutes':
-          'https://www.flipkart.com/search?q=$encoded',
-      'Amazon Now':
-          'https://www.amazon.in/s?k=$encoded',
-      'JioMart':
-          'https://www.jiomart.com/search/$encoded',
-    };
-
+  Future<void> _load() async {
     try {
-      await launchUrl(
-        Uri.parse(urls[retailer]!),
-        mode:
-            LaunchMode.externalApplication,
-      );
+      _data = await _store.load();
     } catch (_) {
-      showMessage(
-        'Could not open $retailer.',
-      );
+      _error = 'Your saved data could not be loaded.';
     }
+    if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> toggleFavourite() async {
-    final product =
-        searchController.text.trim();
-
-    if (product.isEmpty) {
-      return;
+  Future<void> _save(AppData data) async {
+    setState(() => _data = data);
+    try {
+      await _store.save(data);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save changes locally.')));
     }
-
-    setState(() {
-      if (favourites.contains(product)) {
-        favourites.remove(product);
-      } else {
-        favourites.add(product);
-      }
-    });
-
-    await saveData();
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      comparePage(),
-      savedPage(),
-      historyPage(),
-      settingsPage(),
-    ];
-
-    return Scaffold(
-      body: SafeArea(
-        child: pages[selectedTab],
+    final colors = ColorScheme.fromSeed(seedColor: const Color(0xff225c48), brightness: Brightness.light);
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Favour',
+      theme: ThemeData(
+        colorScheme: colors,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xfff7f8f5),
+        inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
       ),
-      bottomNavigationBar:
-          NavigationBar(
-        selectedIndex: selectedTab,
-        onDestinationSelected:
-            (index) {
-          setState(() {
-            selectedTab = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon:
-                Icon(Icons.compare_arrows),
-            label: 'Compare',
-          ),
-          NavigationDestination(
-            icon:
-                Icon(Icons.star_outline),
-            selectedIcon:
-                Icon(Icons.star),
-            label: 'Saved',
-          ),
-          NavigationDestination(
-            icon:
-                Icon(Icons.history),
-            label: 'History',
-          ),
-          NavigationDestination(
-            icon:
-                Icon(Icons.settings_outlined),
-            label: 'Settings',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget comparePage() {
-    final best = bestPrice;
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Favour',
-          style: Theme.of(context)
-              .textTheme
-              .headlineMedium
-              ?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-        ),
-
-        const Text(
-          'Find the best price for what you want to buy.',
-        ),
-
-        const SizedBox(height: 18),
-
-        TextField(
-          controller: searchController,
-          textInputAction:
-              TextInputAction.search,
-          onSubmitted: (_) {
-            searchProduct();
-          },
-          decoration:
-              InputDecoration(
-            hintText:
-                'e.g. Amul Taaza Milk 1L',
-            prefixIcon:
-                const Icon(Icons.search),
-            suffixIcon: IconButton(
-              onPressed: searchProduct,
-              icon: const Icon(
-                Icons.arrow_forward,
-              ),
-            ),
-            filled: true,
-            border:
-                OutlineInputBorder(
-              borderRadius:
-                  BorderRadius.circular(18),
-              borderSide:
-                  BorderSide.none,
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 12),
-
-        if (query.isNotEmpty)
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  query,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed:
-                    toggleFavourite,
-                icon: Icon(
-                  favourites.contains(
-                          query)
-                      ? Icons.star
-                      : Icons.star_border,
-                ),
-              ),
-            ],
-          ),
-
-        if (best != null)
-          Card(
-            child: ListTile(
-              leading:
-                  const CircleAvatar(
-                child: Icon(
-                  Icons.emoji_events,
-                ),
-              ),
-              title: Text(
-                '🏆 Best recorded price ₹${best.price.toStringAsFixed(0)}',
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-              subtitle:
-                  Text(best.retailer),
-            ),
-          ),
-
-        const SizedBox(height: 8),
-
-        Text(
-          'Retailers',
-          style: Theme.of(context)
-              .textTheme
-              .titleLarge
-              ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-        ),
-
-        const SizedBox(height: 8),
-
-        ...retailers.map(
-          (retailer) {
-            return retailerCard(
-              retailer,
-              latestPrices[retailer],
-            );
-          },
-        ),
-
-        const SizedBox(height: 12),
-
-        const Card(
-          child: Padding(
-            padding:
-                EdgeInsets.all(14),
-            child: Text(
-              'Favour never invents live prices. Open a retailer, check the current price, and record it. Favour remembers the price and identifies the cheapest recorded option.',
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget retailerCard(
-    String retailer,
-    PriceRecord? record,
-  ) {
-    final isBest =
-        bestPrice?.retailer ==
-            retailer;
-
-    return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 8,
-      ),
-      child: Column(
-        children: [
-          ListTile(
-            leading:
-                CircleAvatar(
-              child: Text(
-                retailer.substring(0, 1),
-              ),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    retailer,
-                  ),
-                ),
-                if (isBest)
-                  const Text(
-                    '🏆 BEST',
-                    style:
-                        TextStyle(
-                      fontSize: 11,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-              ],
-            ),
-            subtitle: Text(
-              record == null
-                  ? 'Price not recorded'
-                  : '₹${record.price.toStringAsFixed(0)} • ${priceAge(record.time)}',
-            ),
-          ),
-
-          Row(
-            mainAxisAlignment:
-                MainAxisAlignment.end,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () =>
-                    openRetailer(
-                  retailer,
-                ),
-                icon: const Icon(
-                  Icons.open_in_new,
-                  size: 18,
-                ),
-                label:
-                    const Text('Open'),
-              ),
-
-              const SizedBox(width: 8),
-
-              FilledButton.tonalIcon(
-                onPressed: () =>
-                    recordPrice(
-                  retailer,
-                ),
-                icon: const Icon(
-                  Icons.add,
-                  size: 18,
-                ),
-                label:
-                    const Text('Record'),
-              ),
-
-              const SizedBox(width: 8),
-            ],
-          ),
-
-          const SizedBox(height: 5),
-        ],
-      ),
-    );
-  }
-
-  String priceAge(DateTime time) {
-    final difference =
-        DateTime.now().difference(time);
-
-    if (difference.inMinutes < 60) {
-      return '${difference.inMinutes} min ago';
-    }
-
-    if (difference.inHours < 24) {
-      return '${difference.inHours} hr ago';
-    }
-
-    return '${difference.inDays} day(s) ago';
-  }
-
-  Widget savedPage() {
-    return ListView(
-      padding:
-          const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Saved products',
-          style: Theme.of(context)
-              .textTheme
-              .headlineSmall
-              ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-        ),
-
-        const SizedBox(height: 12),
-
-        if (favourites.isEmpty)
-          const Text(
-            'Search a product and tap ⭐ to save it.',
-          ),
-
-        ...favourites.map(
-          (product) {
-            return Card(
-              child: ListTile(
-                title: Text(product),
-                onTap: () {
-                  searchController.text =
-                      product;
-
-                  setState(() {
-                    query = product;
-                    selectedTab = 0;
-                  });
-                },
-                trailing:
-                    IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                  ),
-                  onPressed: () async {
-                    setState(() {
-                      favourites
-                          .remove(product);
-                    });
-
-                    await saveData();
-                  },
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget historyPage() {
-    final history =
-        [...records]..sort(
-            (a, b) =>
-                b.time.compareTo(a.time),
-          );
-
-    return ListView(
-      padding:
-          const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Price history',
-          style: Theme.of(context)
-              .textTheme
-              .headlineSmall
-              ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-        ),
-
-        const SizedBox(height: 12),
-
-        if (history.isEmpty)
-          const Text(
-            'No prices recorded yet.',
-          ),
-
-        ...history.map(
-          (record) {
-            return ListTile(
-              leading: const Icon(
-                Icons.price_check,
-              ),
-              title: Text(
-                '${record.product} • ₹${record.price.toStringAsFixed(0)}',
-              ),
-              subtitle: Text(
-                '${record.retailer} • ${record.time.toLocal().toString().substring(0, 16)}',
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget settingsPage() {
-    return ListView(
-      padding:
-          const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Settings',
-          style: Theme.of(context)
-              .textTheme
-              .headlineSmall
-              ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-        ),
-
-        const SizedBox(height: 16),
-
-        TextField(
-          controller:
-              pincodeController,
-          keyboardType:
-              TextInputType.number,
-          decoration:
-              const InputDecoration(
-            labelText: 'Your pincode',
-            prefixIcon: Icon(
-              Icons.location_on_outlined,
-            ),
-            border:
-                OutlineInputBorder(),
-          ),
-        ),
-
-        const SizedBox(height: 12),
-
-        FilledButton(
-          onPressed: () async {
-            await saveData();
-
-            showMessage(
-              'Settings saved.',
-            );
-          },
-          child:
-              const Text('Save'),
-        ),
-
-        const SizedBox(height: 20),
-
-        const Card(
-          child: Padding(
-            padding:
-                EdgeInsets.all(14),
-            child: Text(
-              'Your pincode is stored locally. It will be used by future authorized live integrations.',
-            ),
-          ),
-        ),
-      ],
+      home: _loading
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : HomeScreen(data: _data, error: _error, onSave: _save),
     );
   }
 }
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, required this.data, required this.onSave, this.error});
+  final AppData data;
+  final String? error;
+  final ValueChanged<AppData> onSave;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _tab = 0;
+
+  Future<void> _openSearch([String? query]) async {
+    final product = await Navigator.of(context).push<Product>(MaterialPageRoute(builder: (_) => SearchScreen(initialQuery: query)));
+    if (product == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComparisonResultsScreen(product: product, data: widget.data, onSave: widget.onSave)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = [_dashboard(), _saved(), _basket(), _settings()];
+    return Scaffold(
+      body: SafeArea(child: pages[_tab]),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (value) => setState(() => _tab = value),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.search), label: 'Compare'),
+          NavigationDestination(icon: Icon(Icons.bookmark_outline), selectedIcon: Icon(Icons.bookmark), label: 'Saved'),
+          NavigationDestination(icon: Icon(Icons.shopping_basket_outlined), selectedIcon: Icon(Icons.shopping_basket), label: 'Basket'),
+          NavigationDestination(icon: Icon(Icons.location_on_outlined), selectedIcon: Icon(Icons.location_on), label: 'Location'),
+        ],
+      ),
+    );
+  }
+
+  Widget _header(String title, String subtitle) => Padding(padding: const EdgeInsets.fromLTRB(20, 24, 20, 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text(subtitle, style: Theme.of(context).textTheme.bodyMedium)]));
+
+  Widget _dashboard() => ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+    _header('Favour', 'Compare recorded grocery prices with confidence.'),
+    Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: InkWell(onTap: _openSearch, borderRadius: BorderRadius.circular(16), child: IgnorePointer(child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search a grocery product'))))),
+    if (widget.error != null) Padding(padding: const EdgeInsets.all(20), child: _notice(widget.error!, Icons.error_outline)),
+    Padding(padding: const EdgeInsets.all(20), child: _notice('Prices are recorded by you, not live. Open a retailer to check and save the price you see.', Icons.verified_user_outlined)),
+    Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text('Supported retailers', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
+    const SizedBox(height: 12),
+    SizedBox(height: 108, child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 20), itemCount: supportedRetailers.length, separatorBuilder: (_, __) => const SizedBox(width: 10), itemBuilder: (_, index) { final retailer = supportedRetailers[index]; return SizedBox(width: 132, child: Card(color: retailer.color.withOpacity(.12), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [CircleAvatar(backgroundColor: retailer.color, radius: 14, child: Text(retailer.shortName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))), const Spacer(), Text(retailer.name, maxLines: 2, style: const TextStyle(fontWeight: FontWeight.w700))]))); })),
+    if (widget.data.offers.isNotEmpty) ...[const SizedBox(height: 24), Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text('Recent recorded prices', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))), const SizedBox(height: 10), ...([...widget.data.offers]..sort((a, b) => b.timestamp.compareTo(a.timestamp))).take(3).map((offer) => Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 8), child: Card(child: ListTile(leading: Icon(Icons.history, color: offer.retailer.color), title: Text(offer.product.displayName), subtitle: Text('${offer.retailer.name} • ${offer.product.packLabel}'), trailing: Text('₹${offer.price.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold))))))],
+  ]);
+
+  Widget _notice(String text, IconData icon) => Card(color: Theme.of(context).colorScheme.primaryContainer, child: Padding(padding: const EdgeInsets.all(16), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon), const SizedBox(width: 12), Expanded(child: Text(text))])));
+
+  Widget _saved() => ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+    _header('Saved products', 'Your favourite comparisons, stored on this device.'),
+    if (widget.data.favourites.isEmpty) const _EmptyState(icon: Icons.bookmark_border, title: 'Nothing saved yet', body: 'Search for a product, then tap Save on its comparison screen.'),
+    ...widget.data.favourites.map((product) => Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 10), child: Card(child: ListTile(onTap: () => _openSearch(product.name), title: Text(product.displayName), subtitle: Text(product.packLabel), trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => widget.onSave(widget.data.copyWith(favourites: widget.data.favourites.where((item) => item.id != product.id).toList())))))),
+  ]);
+
+  Widget _basket() {
+    final calculation = SmartBasket.calculate(widget.data.basket, widget.data.offers);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+      _header('Your basket', 'Recorded prices only — fees are shown only when recorded.'),
+      if (widget.data.basket.isEmpty) const _EmptyState(icon: Icons.shopping_basket_outlined, title: 'Your basket is empty', body: 'Add a product from a comparison to plan your shop.'),
+      ...widget.data.basket.map((item) => Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 10), child: Card(child: ListTile(title: Text(item.product.displayName), subtitle: Text('${item.quantity} × ${item.product.packLabel}'), trailing: IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => widget.onSave(widget.data.copyWith(basket: widget.data.basket.where((entry) => entry.product.id != item.product.id).toList())))))),
+      if (widget.data.basket.isNotEmpty) Padding(padding: const EdgeInsets.all(20), child: _SmartBasketCard(calculation: calculation)),
+    ]);
+  }
+
+  Widget _settings() {
+    final controller = TextEditingController(text: widget.data.pincode);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [_header('Your location', 'Pincode stays on your device for future authorised integrations.'), Padding(padding: const EdgeInsets.all(20), child: TextField(controller: controller, maxLength: 6, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Pincode', prefixIcon: Icon(Icons.location_on_outlined))),), Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: FilledButton(onPressed: () { widget.onSave(widget.data.copyWith(pincode: controller.text.trim())); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location saved locally.'))); }, child: const Text('Save pincode')))]);
+  }
+}
+
+class _SmartBasketCard extends StatelessWidget { const _SmartBasketCard({required this.calculation}); final SmartBasket calculation; @override Widget build(BuildContext context) { if (!calculation.hasCompletePrices) return Card(color: Theme.of(context).colorScheme.secondaryContainer, child: const Padding(padding: EdgeInsets.all(16), child: Text('Smart Basket needs one recorded, available offer for every basket item. Record more prices to compare totals.'))); return Card(color: Theme.of(context).colorScheme.primaryContainer, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Smart Basket', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)), const SizedBox(height: 8), Text('Split basket: ₹${calculation.splitTotal.toStringAsFixed(2)}'), if (calculation.oneRetailer != null) Text('One retailer (${calculation.oneRetailer!.retailer.name}): ₹${calculation.oneRetailer!.total.toStringAsFixed(2)}'), const SizedBox(height: 8), Text(calculation.isSplitCheaper ? 'Splitting saves ₹${(calculation.oneRetailer!.total - calculation.splitTotal).toStringAsFixed(2)} on recorded item prices.' : 'One retailer is as good as or cheaper than splitting.', style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 4), const Text('Delivery, handling and other fees are excluded unless you record them.', style: TextStyle(fontSize: 12))]))); } }
+class _EmptyState extends StatelessWidget { const _EmptyState({required this.icon, required this.title, required this.body}); final IconData icon; final String title; final String body; @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.all(36), child: Column(children: [Icon(icon, size: 48, color: Theme.of(context).colorScheme.outline), const SizedBox(height: 12), Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 6), Text(body, textAlign: TextAlign.center)])); }
