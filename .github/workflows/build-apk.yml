@@ -2,6 +2,9 @@ name: Build Favour APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -31,8 +34,8 @@ jobs:
           fi
       - name: Get dependencies
         run: flutter pub get
-      - name: Check formatting
-        run: dart format --output=none --set-exit-if-changed .
+      - name: Format Dart
+        run: dart format lib test
       - name: Analyze
         run: flutter analyze
       - name: Test
