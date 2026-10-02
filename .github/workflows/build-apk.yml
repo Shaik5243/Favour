@@ -27,8 +27,24 @@ jobs:
             flutter create --project-name favour --platforms=android --org com.shaik.favour .
           fi
 
+      - name: Enable local notification permission
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'POST_NOTIFICATIONS' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' "$MANIFEST"
+          fi
+
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
 
       - name: Build release APK
         run: flutter build apk --release
@@ -36,5 +52,5 @@ jobs:
       - name: Upload Favour APK
         uses: actions/upload-artifact@v4
         with:
-          name: Favour-v3-APK
+          name: Favour-v4-APK
           path: build/app/outputs/flutter-apk/app-release.apk
