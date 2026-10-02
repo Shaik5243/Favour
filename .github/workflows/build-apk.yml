@@ -70,10 +70,13 @@ jobs:
           from pathlib import Path
           p = Path('android/app/build.gradle.kts')
           s = p.read_text()
-          deps = '''    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
-    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-korean:16.0.1")'''
+          deps = [
+              '    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")',
+              '    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")',
+              '    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")',
+              '    implementation("com.google.mlkit:text-recognition-korean:16.0.1")',
+          ]
+          deps = "\n".join(deps)
           if 'text-recognition-chinese:16.0.1' not in s:
               s = s.replace('dependencies {', 'dependencies {\\n' + deps, 1)
           p.write_text(s)
