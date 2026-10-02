@@ -55,6 +55,15 @@ jobs:
               s = s.rstrip() + '\n\ndependencies {\n' + dependency + '\n}\n'
           p.write_text(s)
           PY
+      - name: Disable Android release minification
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          s = s.replace('isMinifyEnabled = true', 'isMinifyEnabled = false')
+          p.write_text(s)
+          PY
       - name: Enable local notification permission
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
