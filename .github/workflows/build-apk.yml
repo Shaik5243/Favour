@@ -30,12 +30,31 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('android/app/build.gradle.kts')
           s = p.read_text()
           if 'isCoreLibraryDesugaringEnabled = true' not in s:
-              s = s.replace('android {', 'android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }', 1)
-          if 'coreLibraryDesugaring(' not in s:
-              s = s.replace('dependencies {', 'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")', 1)
+              s = s.replace(
+                  'android {',
+                  'android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }',
+                  1,
+              )
+          # Replace any existing coreLibraryDesugaring dependency declaration with
+          # a known-good version, then ensure exactly one declaration exists.
+          s = re.sub(
+              r'^\s*coreLibraryDesugaring\([^\n]*\)\s*\n',
+              '',
+              s,
+              flags=re.MULTILINE,
+          )
+          marker = 'dependencies {'
+          if marker not in s:
+              raise SystemExit('Generated Android app Gradle file has no dependencies block')
+          s = s.replace(
+              marker,
+              marker + '\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")',
+              1,
+          )
           p.write_text(s)
           PY
       - name: Enable local notification permission
