@@ -1,19 +1,14 @@
 import asyncio
 import os
 import re
-from urllib.parse import quote_plus
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from playwright.async_api import async_playwright
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="Favour Live Price Gateway", version="1.2.0")
-_browser = None
-_playwright = None
-_browser_lock = asyncio.Lock()
+app = FastAPI(title="Favour Live Price Gateway", version="1.1.0")
 
 
 class Product(BaseModel):
@@ -150,129 +145,6 @@ def _quantity_matches(text: str, product: Product) -> bool:
         )
     )
 
-
-
-async def _get_browser():
-    global _browser, _playwright
-    async with _browser_lock:
-        if _browser is None:
-            _playwright = await async_playwright().start()
-            _browser = await _playwright.chromium.launch(headless=True)
-    return _browser
-
-
-async def _geocode_pincode(client: httpx.AsyncClient, pincode: str) -> tuple[float, float] | None:
-    try:
-        response = await client.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": pincode + ", India", "format": "json", "limit": 1, "countrycodes": "in"},
-            headers={"User-Agent": "Favour/1.0 personal shopping assistant"},
-            timeout=8,
-        )
-        response.raise_for_status()
-        rows = response.json()
-        if rows:
-            return float(rows[0]["lat"]), float(rows[0]["lon"])
-    except (httpx.HTTPError, ValueError, KeyError, IndexError):
-        pass
-    return None
-
-
-def _extract_price(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value) if float(value) > 0 else None
-    match = re.search(r"(\d+(?:\.\d+)?)", str(value).replace(",", ""))
-    return float(match.group(1)) if match and float(match.group(1)) > 0 else None
-
-
-def _walk_dicts(value: Any):
-    if isinstance(value, dict):
-        yield value
-        for child in value.values():
-            yield from _walk_dicts(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from _walk_dicts(child)
-
-
-def _blinkit_offer_from_payload(payload: Any, request: CompareRequest) -> Offer | None:
-    checked_at = datetime.now(timezone.utc).isoformat()
-    for item in _walk_dicts(payload):
-        price = _extract_price(
-            item.get("price") or item.get("normal_price") or item.get("selling_price")
-        )
-        name = str(item.get("product_name") or item.get("name") or item.get("display_name") or "")
-        quantity = str(
-            item.get("unit") or item.get("quantity") or item.get("variant") or item.get("size") or ""
-        )
-        if not price or not _quantity_matches(" ".join((name, quantity)), request.product):
-            continue
-        available = (
-            item.get("is_sold_out") is not True
-            and str(item.get("product_state", "")).lower() != "sold_out"
-        )
-        product_id = str(item.get("product_id") or item.get("id") or abs(hash(str(item))))
-        return Offer(
-            id=f"blinkit-{product_id}",
-            retailer="blinkit",
-            price=price,
-            available=available,
-            checkedAt=checked_at,
-            source="Blinkit website",
-        )
-    return None
-
-
-async def query_blinkit(client: httpx.AsyncClient, request: CompareRequest) -> list[Offer]:
-    coords = await _geocode_pincode(client, request.pincode)
-    if coords is None:
-        return []
-    lat, lon = coords
-    browser = await _get_browser()
-    context = await browser.new_context(
-        geolocation={"latitude": lat, "longitude": lon},
-        permissions=["geolocation"],
-        extra_http_headers={"Accept-Language": "en-IN,en;q=0.9"},
-    )
-    page = await context.new_page()
-    payloads: list[Any] = []
-
-    async def capture(response):
-        if "/v1/layout/" not in response.url or "product" not in response.url:
-            return
-        try:
-            if "application/json" in (response.headers.get("content-type") or ""):
-                payloads.append(await response.json())
-        except Exception:
-            pass
-
-    page.on("response", capture)
-    try:
-        await page.goto("https://blinkit.com/s/", wait_until="domcontentloaded", timeout=25000)
-        await page.wait_for_timeout(2500)
-        try:
-            box = page.get_by_placeholder(re.compile("search", re.I))
-            await box.fill(request.query)
-            await page.keyboard.press("Enter")
-        except Exception:
-            await page.goto(
-                "https://blinkit.com/s/?q=" + quote_plus(request.query),
-                wait_until="domcontentloaded",
-                timeout=25000,
-            )
-        await page.wait_for_timeout(4500)
-    except Exception:
-        return []
-    finally:
-        await context.close()
-
-    for payload in payloads:
-        offer = _blinkit_offer_from_payload(payload, request)
-        if offer:
-            return [offer]
-    return []
 
 def _extract_swiggy_offers(decoded: Any, request: CompareRequest) -> list[Offer]:
     if not isinstance(decoded, dict):
@@ -476,7 +348,6 @@ async def compare(
             for retailer in RETAILERS
             if urls[retailer]
         ]
-        tasks.append(query_blinkit(client, request))
         if swiggy_configured():
             tasks.append(query_swiggy_instamart(client, request))
         batches = await asyncio.gather(*tasks)
