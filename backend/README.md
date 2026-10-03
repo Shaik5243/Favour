@@ -69,3 +69,5 @@ The gateway is now a real deployable backend boundary, but actual retailer price
 pip install -r backend/requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
+
+Backend contract version: 1.0.0.
