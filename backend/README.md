@@ -51,17 +51,29 @@ Each retailer can have its own authorised upstream JSON endpoint:
 - `FAVOUR_SOURCE_AMAZONNOW`
 - `FAVOUR_SOURCE_JIOMART`
 
-Each configured source receives the standard query/product/pincode POST contract and must return `{"offers":[...]}` or `{"data":{"offers":[...]}}`.
+### Swiggy Instamart MCP
+
+The gateway also supports the official Swiggy Builders Club Instamart MCP `search_products` tool.
+
+Set:
+- `FAVOUR_SWIGGY_ACCESS_TOKEN` - Swiggy OAuth access token
+- `FAVOUR_SWIGGY_ADDRESS_ID` - selected saved Swiggy delivery address ID
+
+The gateway calls `POST https://mcp.swiggy.com/im` with the authenticated user's token and the `search_products` tool, then converts matching pack-size variations into Favour offers.
+
+Swiggy MCP production access is invite/review based. Build and staging access should be completed before production. OAuth 2.1 with PKCE is required; access tokens are time-limited. Do not commit tokens to GitHub.
+
+Each configured generic source receives the standard query/product/pincode POST contract and must return `{"offers":[...]}` or `{"data":{"offers":[...]}}`.
 
 ## Deployment
 
-The backend is a FastAPI service and can be deployed as a Render Web Service using the included Dockerfile/render.yaml. Render documents free Web Services and FastAPI deployment, with free services subject to inactivity spin-down.
+The backend is a FastAPI service and can be deployed as a Render Web Service using the included Dockerfile/render.yaml.
 
 ## Important
 
 This gateway does not contain CAPTCHA bypasses, login automation, anti-bot workarounds, or scraping of protected/private endpoints. Retailer adapters must use an authorised/public/partner source or another permitted data source.
 
-The gateway is now a real deployable backend boundary, but actual retailer prices will appear only after at least one authorised retailer/source adapter is configured.
+Actual retailer prices appear only after an authorised source is configured.
 
 ## Local test
 
@@ -70,4 +82,4 @@ pip install -r backend/requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Backend contract version: 1.0.0.
+Backend contract version: 1.1.0.
