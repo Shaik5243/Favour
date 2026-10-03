@@ -16,7 +16,21 @@ void main() {
     expect(Offer(id: 'b', product: kilo, retailer: Retailer.zepto, price: 180, checkedAt: DateTime(2025), available: true, source: PriceSource.recorded).unitPrice, 180);
     expect(multi.normalizedQuantity, 1);
   });
-  test('parses product description where a pack is supplied', () { final parsed = ProductParser.parse('Amul Taaza Milk 1L').product; expect(parsed.brand, 'Amul'); expect(parsed.name, 'Taaza Milk'); expect(parsed.unit, Unit.litre); expect(parsed.packSize, 1); });
+  test('parses product description where a pack is supplied', () {
+    final parsed = ProductParser.parse('Amul Taaza Milk 1L').product;
+    expect(parsed.brand, 'Amul');
+    expect(parsed.name, 'Taaza Milk');
+    expect(parsed.unit, Unit.litre);
+    expect(parsed.packSize, 1);
+  });
+  test('parses multipack without leaving the pack marker in the product name', () {
+    final parsed = ProductParser.parse('Amul Milk 500ml x 2').product;
+    expect(parsed.brand, 'Amul');
+    expect(parsed.name, 'Milk');
+    expect(parsed.packSize, 500);
+    expect(parsed.unit, Unit.millilitre);
+    expect(parsed.packCount, 2);
+  });
   test('matches equivalent brand and product words', () { expect(ProductMatcher.sameProduct(const Product(brand: 'Amul', name: 'Taaza Milk', packSize: 500, unit: Unit.millilitre), const Product(brand: 'amul', name: 'Milk Taaza', packSize: 1, unit: Unit.litre)), isTrue); });
-  test('smart basket finds cheaper split allocation', () { final milk = Product(name: 'Milk', packSize: 1, unit: Unit.litre); final bread = Product(name: 'Bread', packSize: 1, unit: Unit.piece); Offer offer(String id, Product product, Retailer retailer, double price) => Offer(id: id, product: product, retailer: retailer, price: price, checkedAt: DateTime(2025), available: true, source: PriceSource.recorded); final result = SmartBasketCalculator.calculate([BasketItem(product: milk), BasketItem(product: bread)], [offer('1', milk, Retailer.blinkit, 50), offer('2', bread, Retailer.blinkit, 60), offer('3', milk, Retailer.zepto, 55), offer('4', bread, Retailer.zepto, 40)]); expect(result.complete, isTrue); expect(result.split!.total, 90); expect(result.single!.total, 110); expect(result.splitWins, isTrue); });
+  test('smart basket finds cheaper split allocation', () { final milk = Product(name: 'Milk', packSize: 1, unit: Unit.litre); final bread = Product(name: 'Bread', packSize: 1, unit: Unit.piece); Offer offer(String id, Product product, Retailer retailer, double price) => Offer(id: id, product: product, retailer: retailer, price: price, checkedAt: DateTime(2025), available: true, source: PriceSource.recorded); final result = SmartBasketCalculator.calculate([BasketItem(product: milk), BasketItem(product: bread)], [offer('1', milk, Retailer.blinkit, 50), offer('2', bread, Retailer.blinkit, 60), offer('3', milk, Retailer.zepto, 55), offer('4', bread, Retailer.zepto, 40)]); expect(result.complete, isTrue); expect(result.split!.total, 90); expect(result.single!.total, 95); expect(result.splitWins, isTrue); });
 }

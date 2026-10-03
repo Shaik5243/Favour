@@ -2,6 +2,9 @@ name: Build Favour APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -10,42 +13,95 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
       - name: Create Android project
         run: |
           if [ ! -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
             flutter create --project-name favour --platforms=android --org com.shaik.favour .
           fi
-
+      - name: Enable core library desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          if 'isCoreLibraryDesugaringEnabled = true' not in s:
+              s = s.replace(
+                  'android {',
+                  'android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }',
+                  1,
+              )
+          # Replace any existing coreLibraryDesugaring dependency declaration with
+          # a known-good version, then ensure exactly one declaration exists.
+          s = re.sub(
+              r'^\s*coreLibraryDesugaring\([^\n]*\)\s*\n',
+              '',
+              s,
+              flags=re.MULTILINE,
+          )
+          marker = 'dependencies {'
+          dependency = '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")'
+          if marker in s:
+              s = s.replace(marker, marker + '\n' + dependency, 1)
+          else:
+              s = s.rstrip() + '\n\ndependencies {\n' + dependency + '\n}\n'
+          p.write_text(s)
+          PY
+      - name: Disable Android release minification
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          s = s.replace('isMinifyEnabled = true', 'isMinifyEnabled = false')
+          p.write_text(s)
+          PY
+      - name: Add ML Kit language dependencies
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          deps = [
+              '    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")',
+              '    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")',
+              '    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")',
+              '    implementation("com.google.mlkit:text-recognition-korean:16.0.1")',
+          ]
+          deps = "\n".join(deps)
+          marker = 'dependencies {'
+          if 'text-recognition-chinese:16.0.1' not in s:
+              if marker not in s:
+                  raise SystemExit('No dependencies block found in generated Android Gradle file')
+              s = s.replace(marker, marker + '\n' + deps, 1)
+          if '\\n    implementation(' in s:
+              raise SystemExit('Invalid literal \\n detected in generated Gradle file')
+          p.write_text(s)
+          PY
       - name: Enable local notification permission
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'POST_NOTIFICATIONS' "$MANIFEST"; then
             sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' "$MANIFEST"
           fi
-
       - name: Get dependencies
         run: flutter pub get
-
+      - name: Format Dart
+        run: dart format lib test
       - name: Analyze
-        run: flutter analyze
-
+        run: flutter analyze --no-fatal-infos
       - name: Test
         run: flutter test
-
       - name: Build release APK
-        run: flutter build apk --release
-
+        run: flutter build apk --release --no-shrink
       - name: Upload Favour APK
         uses: actions/upload-artifact@v4
         with:

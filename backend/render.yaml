@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: favour-live-gateway
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: FAVOUR_GATEWAY_TOKEN
+        sync: false
