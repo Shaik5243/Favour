@@ -8,17 +8,18 @@ import '../models/price_source.dart';
 import '../models/product.dart';
 import '../models/retailer.dart';
 import '../services/ocr_service.dart';
-import '../services/quickcommerce_api.dart';
+import '../services/favour_live_price_service.dart';
 
 class ComparisonResultsScreen extends StatefulWidget { const ComparisonResultsScreen({super.key, required this.controller, required this.product}); final FavourController controller; final Product product; @override State<ComparisonResultsScreen> createState() => _ComparisonResultsScreenState(); }
 class _ComparisonResultsScreenState extends State<ComparisonResultsScreen> {
   late Product product = widget.product; bool loadingLive = false; List<Offer> liveOffers = const [];
   @override void initState() { super.initState(); _loadLivePrices(); }
   Future<void> _loadLivePrices() async {
-    if (widget.controller.data.apiKey.trim().isEmpty) return;
+    final endpoint = widget.controller.data.liveEndpoint.trim();
+    if (endpoint.isEmpty || widget.controller.data.pincode.trim().length != 6) return;
     setState(() => loadingLive = true);
     try {
-      final offers = await QuickCommerceApi().search(product, pincode: widget.controller.data.pincode, apiKey: widget.controller.data.apiKey);
+      final offers = await FavourLivePriceService().search(product, pincode: widget.controller.data.pincode, endpoint: endpoint, token: widget.controller.data.apiKey);
       if (!mounted) return;
       liveOffers = offers;
       if (offers.isNotEmpty) {
@@ -26,6 +27,8 @@ class _ComparisonResultsScreenState extends State<ComparisonResultsScreen> {
         await widget.controller.save(widget.controller.data.copyWith(offers: existing));
       }
       setState(() {});
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Live gateway could not be reached. Check the gateway URL and PIN code in Settings.')));
     } finally { if (mounted) setState(() => loadingLive = false); }
   }
   List<Offer> get history { final all = [...widget.controller.data.offers.where((offer) => offer.product.id == product.id), ...liveOffers.where((offer) => offer.product.id == product.id)]; final seen = <String>{}; final result = <Offer>[]; for (final offer in all) { if (seen.add(offer.id)) result.add(offer); } result.sort((a, b) => b.checkedAt.compareTo(a.checkedAt)); return result; }
