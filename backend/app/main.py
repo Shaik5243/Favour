@@ -1,10 +1,10 @@
+import asyncio
 import os
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
-
 
 app = FastAPI(title="Favour Live Price Gateway", version="1.0.0")
 
@@ -51,38 +51,12 @@ RETAILERS = (
 )
 
 
-def expected_token() -> str:
-    return os.getenv("FAVOUR_GATEWAY_TOKEN", "").strip()
-
-
 def source_url(retailer: str) -> str:
     return os.getenv(f"FAVOUR_SOURCE_{retailer.upper()}", "").strip()
 
 
 def source_urls() -> dict[str, str]:
     return {retailer: source_url(retailer) for retailer in RETAILERS}
-
-
-def normalize_offer(item: dict[str, Any], retailer: str) -> Offer | None:
-    price = item.get("price")
-    try:
-        price_value = float(price)
-    except (TypeError, ValueError):
-        return None
-    if price_value <= 0:
-        return None
-
-    return Offer(
-        id=str(item.get("id") or f"{retailer}-{abs(hash(str(item))) }"),
-        retailer=retailer,
-        price=price_value,
-        available=item.get("available", True) is not False,
-        checkedAt=str(item.get("checkedAt") or item.get("checked_at") or ""),
-        source=str(item.get("source") or "authorised gateway source"),
-        deliveryFee=_number(item.get("deliveryFee", item.get("delivery_fee"))),
-        handlingFee=_number(item.get("handlingFee", item.get("handling_fee"))),
-        otherFee=_number(item.get("otherFee", item.get("other_fee"))),
-    )
 
 
 def _number(value: Any) -> float | None:
@@ -92,6 +66,26 @@ def _number(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def normalize_offer(item: dict[str, Any], retailer: str) -> Offer | None:
+    try:
+        price = float(item.get("price"))
+    except (TypeError, ValueError):
+        return None
+    if price <= 0:
+        return None
+    return Offer(
+        id=str(item.get("id") or f"{retailer}-{abs(hash(str(item)))}"),
+        retailer=retailer,
+        price=price,
+        available=item.get("available", True) is not False,
+        checkedAt=str(item.get("checkedAt") or item.get("checked_at") or ""),
+        source=str(item.get("source") or "authorised gateway source"),
+        deliveryFee=_number(item.get("deliveryFee", item.get("delivery_fee"))),
+        handlingFee=_number(item.get("handlingFee", item.get("handling_fee"))),
+        otherFee=_number(item.get("otherFee", item.get("other_fee"))),
+    )
 
 
 async def query_source(
@@ -137,7 +131,7 @@ async def query_source(
 
 @app.get("/")
 async def root() -> dict[str, Any]:
-    configured = [retailer for retailer, url in source_urls().items() if url]
+    configured = [r for r, url in source_urls().items() if url]
     return {
         "service": "Favour Live Price Gateway",
         "status": "ok",
@@ -166,11 +160,9 @@ async def compare(
     request: CompareRequest,
     authorization: str | None = Header(default=None),
 ) -> CompareResponse:
-    configured_token = expected_token()
-    if configured_token:
-        expected = f"Bearer {configured_token}"
-        if authorization != expected:
-            raise HTTPException(status_code=401, detail="Invalid gateway token")
+    token = os.getenv("FAVOUR_GATEWAY_TOKEN", "").strip()
+    if token and authorization != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="Invalid gateway token")
 
     urls = source_urls()
     if not any(urls.values()):
@@ -180,9 +172,12 @@ async def compare(
         )
 
     async with httpx.AsyncClient(
-        headers={"Accept": "application/json", "User-Agent": "FavourGateway/1.0"}
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "FavourGateway/1.0",
+        }
     ) as client:
-        results = await __import__("asyncio").gather(
+        batches = await asyncio.gather(
             *[
                 query_source(client, retailer, request)
                 for retailer in RETAILERS
@@ -190,4 +185,6 @@ async def compare(
             ]
         )
 
-    return CompareResponse(offers=[offer for batch in results for offer in batch])
+    return CompareResponse(
+        offers=[offer for batch in batches for offer in batch]
+    )

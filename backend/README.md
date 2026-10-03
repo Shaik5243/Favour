@@ -1,29 +1,71 @@
 # Favour Live Price Gateway
 
-Favour uses a provider-neutral gateway so the Android app does not depend on a paid aggregator.
+This backend is the server-side live-price boundary used by the Favour Android app.
 
-## Request
-POST /compare
+## Flow
 
+Favour Android -> POST /compare -> authorised retailer/source adapters -> normalized offers -> Favour.
+
+The Android app sends:
+- query
+- normalized product
+- 6-digit pincode
+
+The gateway returns:
 ```json
-{"query":"Amul Milk 500ml","product":{"name":"Milk","brand":"Amul","packSize":500,"unit":"millilitre","packCount":1},"pincode":"560001"}
+{
+  "offers": [
+    {
+      "id": "source-item-id",
+      "retailer": "blinkit",
+      "price": 42.0,
+      "available": true,
+      "checkedAt": "2026-10-03T10:00:00Z",
+      "source": "authorised source",
+      "deliveryFee": 0,
+      "handlingFee": 0,
+      "otherFee": 0
+    }
+  ]
+}
 ```
 
-Optional authentication: `Authorization: Bearer <token>`.
+## Endpoints
 
-## Response
-```json
-{"offers":[{"id":"blinkit-123","retailer":"blinkit","price":31,"available":true,"checkedAt":"2026-10-03T08:00:00Z","source":"retailer-adapter","deliveryFee":0,"handlingFee":0,"otherFee":0}]}
+- `GET /` - service status and configured retailer count
+- `GET /health` - health check
+- `GET /sources` - configured-source status
+- `POST /compare` - live comparison
+
+## Environment variables
+
+Set `FAVOUR_GATEWAY_TOKEN` to protect the mobile-to-gateway API.
+
+Each retailer can have its own authorised upstream JSON endpoint:
+
+- `FAVOUR_SOURCE_BLINKIT`
+- `FAVOUR_SOURCE_ZEPTO`
+- `FAVOUR_SOURCE_SWIGGYINSTMART`
+- `FAVOUR_SOURCE_BIGBASKETNOW`
+- `FAVOUR_SOURCE_FLIPKARTMINUTES`
+- `FAVOUR_SOURCE_AMAZONNOW`
+- `FAVOUR_SOURCE_JIOMART`
+
+Each configured source receives the standard query/product/pincode POST contract and must return `{"offers":[...]}` or `{"data":{"offers":[...]}}`.
+
+## Deployment
+
+The backend is a FastAPI service and can be deployed as a Render Web Service using the included Dockerfile/render.yaml. Render documents free Web Services and FastAPI deployment, with free services subject to inactivity spin-down.
+
+## Important
+
+This gateway does not contain CAPTCHA bypasses, login automation, anti-bot workarounds, or scraping of protected/private endpoints. Retailer adapters must use an authorised/public/partner source or another permitted data source.
+
+The gateway is now a real deployable backend boundary, but actual retailer prices will appear only after at least one authorised retailer/source adapter is configured.
+
+## Local test
+
+```bash
+pip install -r backend/requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
-
-Retailer values must match Favour's `Retailer` enum.
-
-## Adapter boundary
-Each retailer adapter should implement its own permitted data-access method and return the normalized offer contract. The gateway owns location handling, retries, normalization, matching, caching, and the lowest-effective-price calculation.
-
-Do not bypass CAPTCHA, authentication, access controls, robots restrictions, or retailer terms. Where a retailer does not provide an authorized machine-readable source, the adapter should remain unavailable rather than scraping around controls.
-
-## Planned flow
-Android -> Favour gateway -> retailer adapters -> normalize SKU/pack -> validate availability -> calculate effective cost -> Android.
-
-This keeps the app independent from QuickCommerce API and allows a permitted adapter to be added without changing the Android UI.
