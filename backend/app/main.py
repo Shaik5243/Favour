@@ -64,10 +64,19 @@ def swiggy_configured() -> bool:
     )
 
 
+def flipkart_configured() -> bool:
+    return bool(
+        os.getenv("FAVOUR_FLIPKART_AFFILIATE_ID", "").strip()
+        and os.getenv("FAVOUR_FLIPKART_AFFILIATE_TOKEN", "").strip()
+    )
+
+
 def configured_retailers() -> list[str]:
     configured = [r for r, url in source_urls().items() if url]
     if swiggy_configured() and "swiggyInstamart" not in configured:
         configured.append("swiggyInstamart")
+    if flipkart_configured() and "flipkartMinutes" not in configured:
+        configured.append("flipkartMinutes")
     return configured
 
 
@@ -247,6 +256,71 @@ async def query_swiggy_instamart(
         return []
 
 
+async def query_flipkart(
+    client: httpx.AsyncClient,
+    request: CompareRequest,
+) -> list[Offer]:
+    affiliate_id = os.getenv("FAVOUR_FLIPKART_AFFILIATE_ID", "").strip()
+    affiliate_token = os.getenv("FAVOUR_FLIPKART_AFFILIATE_TOKEN", "").strip()
+    if not affiliate_id or not affiliate_token:
+        return []
+
+    try:
+        response = await client.get(
+            "https://affiliate-api.flipkart.net/affiliate/1.0/search.json",
+            params={"query": request.query, "resultCount": "10"},
+            headers={
+                "Accept": "application/json",
+                "Fk-Affiliate-Id": affiliate_id,
+                "Fk-Affiliate-Token": affiliate_token,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        decoded = response.json()
+    except (httpx.HTTPError, ValueError):
+        return []
+
+    products = decoded.get("productInfoList") if isinstance(decoded, dict) else None
+    if not isinstance(products, list):
+        return []
+
+    offers: list[Offer] = []
+    checked_at = datetime.now(timezone.utc).isoformat()
+    for item in products:
+        if not isinstance(item, dict):
+            continue
+        base = item.get("productBaseInfoV1")
+        if not isinstance(base, dict):
+            continue
+        price_data = base.get("price")
+        if not isinstance(price_data, dict):
+            continue
+        price = _number(
+            price_data.get("sellingPrice")
+            or price_data.get("specialPrice")
+            or price_data.get("price")
+        )
+        if price is None or price <= 0:
+            continue
+        product_id = str(base.get("productId") or "")
+        if not product_id:
+            continue
+        product_url = str(base.get("productUrl") or "")
+        offers.append(
+            Offer(
+                id=f"flipkartMinutes-{product_id}",
+                retailer="flipkartMinutes",
+                price=price,
+                available=True,
+                checkedAt=checked_at,
+                source="Flipkart Affiliate API",
+                otherFee=None,
+            )
+        )
+    return offers
+
+
 async def query_source(
     client: httpx.AsyncClient,
     retailer: str,
@@ -313,6 +387,8 @@ async def sources() -> dict[str, Any]:
                 "mode": (
                     "swiggy-mcp"
                     if retailer == "swiggyInstamart" and swiggy_configured()
+                    else "flipkart-affiliate"
+                    if retailer == "flipkartMinutes" and flipkart_configured()
                     else "http-source"
                 ),
             }
@@ -331,7 +407,7 @@ async def compare(
         raise HTTPException(status_code=401, detail="Invalid gateway token")
 
     urls = source_urls()
-    if not any(urls.values()) and not swiggy_configured():
+    if not any(urls.values()) and not swiggy_configured() and not flipkart_configured():
         raise HTTPException(
             status_code=503,
             detail="No authorised retailer sources are configured",
@@ -350,6 +426,8 @@ async def compare(
         ]
         if swiggy_configured():
             tasks.append(query_swiggy_instamart(client, request))
+        if flipkart_configured():
+            tasks.append(query_flipkart(client, request))
         batches = await asyncio.gather(*tasks)
 
     return CompareResponse(
