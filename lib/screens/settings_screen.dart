@@ -33,7 +33,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Text('Location & alerts', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
         TextField(controller: _pinController, maxLength: 6, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'PIN code', prefixIcon: Icon(Icons.location_on_outlined))),
-        TextField(controller: _endpointController, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Favour live gateway URL', prefixIcon: Icon(Icons.cloud_outlined), hintText: 'https://your-gateway.example/compare')),\n        const SizedBox(height: 12),\n        TextField(controller: _credentialController, obscureText: true, decoration: const InputDecoration(labelText: 'Gateway token (optional)', prefixIcon: Icon(Icons.lock_outline))),\n        const SizedBox(height: 12),\n        FilledButton(onPressed: () => widget.controller.save(widget.controller.data.copyWith(pincode: _pinController.text.trim(), liveEndpoint: _endpointController.text.trim(), apiKey: _credentialController.text.trim())), child: const Text('Save live settings')),
+        TextField(controller: _endpointController, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Favour live gateway URL', prefixIcon: Icon(Icons.cloud_outlined), hintText: 'https://your-gateway.example/compare')),
+        const SizedBox(height: 12),
+        TextField(controller: _credentialController, obscureText: true, decoration: const InputDecoration(labelText: 'Gateway token (optional)', prefixIcon: Icon(Icons.lock_outline))),
+        const SizedBox(height: 12),
+        FilledButton(onPressed: () => widget.controller.save(widget.controller.data.copyWith(pincode: _pinController.text.trim(), liveEndpoint: _endpointController.text.trim(), apiKey: _credentialController.text.trim())), child: const Text('Save live settings')),
 
         const SizedBox(height: 20),
         Text('Price alerts', style: Theme.of(context).textTheme.titleLarge),
